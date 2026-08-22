@@ -170,6 +170,20 @@ const GH_CONFIG_KEY = "workbench.ghConfig";
 let ghConfig;
 try { ghConfig = JSON.parse(localStorage.getItem(GH_CONFIG_KEY)) || {}; } catch (e) { ghConfig = {}; }
 if (!ghConfig.branch) ghConfig = { owner: "", repo: "", token: "", branch: "main", path: "data/workbench.json", autoSync: false, ...(ghConfig || {}) };
+// URL 参数一键预填设置（?gh_owner=&gh_repo=&gh_token=&gh_branch=&gh_path=&gh_auto=1）
+try {
+  const q = new URLSearchParams(location.search);
+  const owner = q.get("gh_owner"), repo = q.get("gh_repo"), token = q.get("gh_token");
+  if (owner && repo && token) {
+    ghConfig = Object.assign({}, ghConfig, {
+      owner, repo, token,
+      branch: q.get("gh_branch") || ghConfig.branch || "main",
+      path: q.get("gh_path") || ghConfig.path || "data/workbench.json",
+      autoSync: q.get("gh_auto") === "1" ? true : ghConfig.autoSync
+    });
+    saveGhConfig();
+  }
+} catch (e) {}
 function saveGhConfig() { localStorage.setItem(GH_CONFIG_KEY, JSON.stringify(ghConfig)); }
 function normalizeStore() { const s = JSON.parse(JSON.stringify(store)); delete s._sync; return s; }
 function ensureSyncBase() { if (!store._sync || !store._sync.base) { store._sync = { ...(store._sync || {}), base: normalizeStore() }; save(); } }
