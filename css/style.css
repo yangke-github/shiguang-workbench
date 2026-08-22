@@ -654,3 +654,8 @@ input[type="checkbox"] {
 @media (min-width: 700px) {
   .content { padding-left: 0; padding-right: 0; }
 }
+
+/* ============ 历史数据编辑/删除（v2.4） ============ */
+.act-del { color: #c0392b !important; }
+.dish-chip-g { display: inline-flex; align-items: center; gap: 3px; }
+.dish-chip-g .chip-x { width: 14px; height: 14px; font-size: 10px; }
