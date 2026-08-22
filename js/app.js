@@ -691,6 +691,8 @@ function renderStatView() {
         <span class="tag ${sets ? "" : "gray"}">${sets && cm ? "综合" : sets ? "力量" : "有氧"}</span>
         <div class="li-main"><div class="li-title">${(w.strength || []).map(e => e.name).join("，") || "纯有氧"}</div>
         <div class="li-sub">${d}${sets ? ` · ${sets} 组` : ""}${cm ? ` · 有氧 ${cm} 分` : ""}</div></div>
+        <button class="todo-act" data-jump="fit|${d}" title="去编辑">✎</button>
+        <button class="todo-act act-del" data-del="fitday|${d}" title="删除当天">🗑</button>
       </div>`;
     }).join("") || `<div class="empty">该时段暂无记录</div>`}`;
 
@@ -753,7 +755,7 @@ function monthCalendarHtml(anchor) {
     const hasS = w && (w.strength || []).length > 0;
     const hasC = w && (w.cardio || []).length > 0;
     const cls = !hasS && !hasC ? "rest" : hasS && hasC ? "both" : hasS ? "s" : "c";
-    cells += `<span class="cal-cell ${cls}${ds === today ? " today" : ""}">${d}</span>`;
+    cells += `<span class="cal-cell ${cls}${ds === today ? " today" : ""}" data-jump="fit|${ds}" style="cursor:pointer">${d}</span>`;
   }
   return `
     <div class="section-title">打卡日历</div>
@@ -844,12 +846,16 @@ function renderExpense() {
     }));
   }
 
-  $("#expList").innerHTML = recs.length ? [...recs].reverse().map(r => `
-    <div class="list-item">
+  $("#expList").innerHTML = recs.length ? [...recs].reverse().map(r => {
+    const ri = store.expense.records.indexOf(r);
+    return `<div class="list-item">
       <span class="tag gray">${r.category}</span>
       <div class="li-main"><div class="li-title">${r.note || r.category}</div><div class="li-sub">${r.date}</div></div>
       <span class="li-amount">${fmtCNY(r.amount)}</span>
-    </div>`).join("") : `<div class="empty">这个${expScope}还没有消费记录</div>`;
+      <button class="todo-act" data-edit="exp|${ri}" title="修改">✎</button>
+      <button class="todo-act act-del" data-del="exp|${ri}" title="删除">🗑</button>
+    </div>`;
+  }).join("") : `<div class="empty">这个${expScope}还没有消费记录</div>`;
 
   $("#expSeg").addEventListener("click", e => {
     const b = e.target.closest("button"); if (!b) return;
@@ -858,8 +864,14 @@ function renderExpense() {
   $("#expSubmit").addEventListener("click", () => {
     const amt = +$("#expAmt").value;
     if (!amt) { toast("请输入金额"); return; }
-    store.expense.records.push({ date: todayStr(), category: $("#expCat").value, amount: amt, note: $("#expNote").value.trim() });
-    save(); renderExpense(); toast("已记录");
+    const cat = $("#expCat").value, note = $("#expNote").value.trim();
+    if (expEditIdx !== null && store.expense.records[expEditIdx]) {
+      Object.assign(store.expense.records[expEditIdx], { category: cat, amount: amt, note });
+      expEditIdx = null;
+    } else {
+      store.expense.records.push({ date: todayStr(), category: cat, amount: amt, note });
+    }
+    save(); renderExpense(); toast("已保存");
   });
 }
 
@@ -884,6 +896,7 @@ function renderTodo() {
         </div>
       </div>
       <button class="todo-act" data-edit="${t.id}">编辑</button>
+      <button class="todo-act act-del" data-del="todo|${t.id}">删除</button>
     </div>`;
 
   $("#content").innerHTML = `
@@ -954,9 +967,13 @@ let histDate = (() => {        // 定位到最近一条有记录的日期
 
 const DAYS_CN = ["一","二","三","四","五","六","日"];
 const recipeById = id => store.recipes.recipes.find(r => String(r.id) === String(id));
-const dishChips = (ids, ctx) => (ids || []).map(id => {
+const dishChips = (ids, ctx, date) => (ids || []).map(id => {
   const r = recipeById(id);
-  return r ? `<button class="dish-chip" data-detail="${id}" data-ctx="${ctx}">${r.name}</button>` : "";
+  if (!r) return "";
+  const x = ctx === "hist" && date
+    ? `<button class="chip-x" data-del="histdish|${date}|${id}" title="移除这道菜">×</button>`
+    : "";
+  return `<span class="dish-chip-g"><button class="dish-chip" data-detail="${id}" data-ctx="${ctx}">${r.name}</button>${x}</span>`;
 }).join("");
 
 /* ---------- 日期工具 ---------- */
@@ -1083,7 +1100,8 @@ function renderHistory() {
       ${rec
         ? `<div class="hist-row">
              <div class="hist-date"><b>${histDate.slice(5)}</b><small>周${wdOf(histDate)}</small></div>
-             <div class="day-dishes">${dishChips(rec.recipeIds, "hist")}</div>
+             <div class="day-dishes">${dishChips(rec.recipeIds, "hist", histDate)}</div>
+             <button class="todo-act act-del" data-del="histday|${histDate}" title="删除当天记录">🗑</button>
            </div>
            <div class="li-sub" style="margin-top:14px">当天共 ${rec.recipeIds.length} 道</div>`
         : `<div class="empty">这天没有做饭记录</div>`}`;
@@ -1095,7 +1113,8 @@ function renderHistory() {
       if (!rec) return "";
       return `<div class="hist-row">
         <div class="hist-date"><b>${d.slice(5)}</b><small>周${wdOf(d)}</small></div>
-        <div class="day-dishes">${dishChips(rec.recipeIds, "hist")}</div>
+        <div class="day-dishes">${dishChips(rec.recipeIds, "hist", d)}</div>
+        <button class="todo-act act-del" data-del="histday|${d}" title="删除当天记录">🗑</button>
       </div>`;
     }).join("");
     const total = days.reduce((s, d) => s + (histRecord(d)?.recipeIds.length || 0), 0);
@@ -1131,7 +1150,8 @@ function renderHistory() {
       ${monthRecs.map(r => `
         <div class="hist-row">
           <div class="hist-date"><b>${r.date.slice(5)}</b><small>周${wdOf(r.date)}</small></div>
-          <div class="day-dishes">${dishChips(r.recipeIds, "hist")}</div>
+          <div class="day-dishes">${dishChips(r.recipeIds, "hist", r.date)}</div>
+          <button class="todo-act act-del" data-del="histday|${r.date}" title="删除当天记录">🗑</button>
         </div>`).join("") || `<div class="empty">这个月没有记录</div>`}`;
   }
 
@@ -1244,6 +1264,8 @@ function renderAnniversary() {
           <div class="li-sub">${dateLabel}</div>
         </div>
         <div class="anni-countdown" style="${soon ? "" : "color:var(--ink-2)"}">${a.days}<em> 天后</em></div>
+        <button class="todo-act" data-edit="anni|${a.id}" title="修改">✎</button>
+        <button class="todo-act act-del" data-del="anni|${a.id}" title="删除">🗑</button>
       </div>`;
     }).join("") || `<div class="empty">还没有记录</div>`}`;
 
@@ -1260,7 +1282,23 @@ function renderAnniversary() {
     const name = $("#anName").value.trim();
     if (!name) { toast("请填写名称"); return; }
     const repeat = repeatSel.value;
-    if (repeat === "once") {
+    if (anEditId) {
+      const t = store.anniversaries.items.find(x => x.id === anEditId);
+      if (t) {
+        t.name = name; t.repeat = repeat;
+        delete t.date; delete t.month; delete t.day;
+        if (repeat === "once") {
+          const date = $("#anDate").value;
+          if (!date) { toast("请选择日期"); return; }
+          t.date = date;
+        } else {
+          const m = +$("#anMonth").value, d = +$("#anDay").value;
+          if (!m || !d) { toast("请填写月/日"); return; }
+          t.month = m; t.day = d;
+        }
+        anEditId = null;
+      }
+    } else if (repeat === "once") {
       const date = $("#anDate").value;
       if (!date) { toast("请选择日期"); return; }
       store.anniversaries.items.push({ id: Date.now(), name, repeat: "once", date });
@@ -1432,7 +1470,8 @@ function renderSettings() {
       <button class="btn ghost" id="importBtn">导入 JSON</button>
     </div>
     <input type="file" id="importFile" accept="application/json" style="display:none">
-    <button class="btn danger" id="resetBtn" style="margin-top:12px">清空并恢复演示数据</button>`;
+    <button class="btn danger" id="resetBtn" style="margin-top:12px">清空并恢复演示数据</button>
+    <button class="btn danger" id="clearBtn" style="margin-top:8px">清空全部数据（空白开始，删测试数据用）</button>`;
 
   $("#ghSave").addEventListener("click", () => {
     ghConfig.owner = $("#ghOwner").value.trim();
@@ -1461,6 +1500,7 @@ function renderSettings() {
     reader.readAsText(file);
   });
   $("#resetBtn").addEventListener("click", resetData);
+  $("#clearBtn").addEventListener("click", clearAllData);
 }
 
 /* ================================================================
@@ -1523,6 +1563,82 @@ function renderPlaceholder(title, ico, desc) {
     <div class="section-title">往期记录</div>
     <div class="empty">还没有记录，开始第一条吧。</div>`;
 }
+
+/* ---------- 全局委托：历史数据 编辑 / 删除 / 跳转 ---------- */
+let expEditIdx = null, anEditId = null;
+
+function clearAllData() {
+  if (!confirm("确定清空本地全部数据（空白开始，不含演示数据）？此操作不可撤销，请先同步到 GitHub 备份。")) return;
+  store = {
+    english: { date: "", words: [], article: { title: "", en: "", zh: "", keywords: [] }, readDates: [] },
+    todo: { tasks: [] }, anniversaries: { items: [] }, insights: {},
+    workouts: {}, expense: { records: [] }, recipes: { recipes: [] },
+    weeklyMenu: { days: [] }, menuHistory: { records: [] }, customEx: [], customCardio: []
+  };
+  delete store._sync; save(); renderSettings(); toast("已清空，空白开始");
+}
+
+document.addEventListener("click", e => {
+  const del = e.target.closest("[data-del]");
+  if (del) {
+    const [kind, a, b] = (del.dataset.del || "").split("|");
+    if (kind === "exp") {
+      const r = store.expense.records[+a];
+      if (r && confirm(`删除这笔消费（${r.note || r.category} ¥${r.amount}）？`)) {
+        store.expense.records.splice(+a, 1); save(); renderExpense(); toast("已删除");
+      }
+    } else if (kind === "todo") {
+      const i = store.todo.tasks.findIndex(t => String(t.id) === a);
+      if (i >= 0 && confirm("删除这条待办？")) { store.todo.tasks.splice(i, 1); save(); renderTodo(); toast("已删除"); }
+    } else if (kind === "anni") {
+      const i = store.anniversaries.items.findIndex(x => String(x.id) === a);
+      if (i >= 0 && confirm("删除这个纪念日？")) { store.anniversaries.items.splice(i, 1); save(); renderAnniversary(); toast("已删除"); }
+    } else if (kind === "histday") {
+      const recs = store.menuHistory.records;
+      const i = recs.findIndex(r => r.date === a);
+      if (i >= 0 && confirm(`删除 ${a} 的做饭记录？`)) { recs.splice(i, 1); save(); renderRecipe(); toast("已删除"); }
+    } else if (kind === "histdish") {
+      const rec = (store.menuHistory.records || []).find(r => r.date === a);
+      if (rec) {
+        rec.recipeIds = rec.recipeIds.filter(id => String(id) !== b);
+        if (!rec.recipeIds.length) store.menuHistory.records = store.menuHistory.records.filter(r => r.date !== a);
+        save(); renderRecipe(); toast("已移除");
+      }
+    } else if (kind === "fitday") {
+      if (store.workouts[a] && confirm(`删除 ${a} 的训练记录？`)) { delete store.workouts[a]; save(); renderFitness(); toast("已删除"); }
+    }
+    return;
+  }
+  const edit = e.target.closest("[data-edit]");
+  if (edit) {
+    const [kind, a] = (edit.dataset.edit || "").split("|");
+    if (kind === "exp") {
+      const r = store.expense.records[+a];
+      if (!r) return;
+      expEditIdx = +a;
+      $("#expCat").value = r.category; $("#expAmt").value = r.amount; $("#expNote").value = r.note || "";
+      $("#expSubmit").textContent = "更 新";
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } else if (kind === "anni") {
+      const it = store.anniversaries.items.find(x => String(x.id) === a);
+      if (!it) return;
+      anEditId = it.id;
+      $("#anName").value = it.name;
+      const rs = $("#anRepeat");
+      if (it.repeat === "once") { rs.value = "once"; $("#anDate").value = it.date || ""; }
+      else { rs.value = "yearly"; $("#anMonth").value = it.month; $("#anDay").value = it.day; }
+      rs.dispatchEvent(new Event("change"));
+      $("#anSubmit").textContent = "更 新";
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+    return;
+  }
+  const jump = e.target.closest("[data-jump]");
+  if (jump) {
+    const [kind, date] = (jump.dataset.jump || "").split("|");
+    if (kind === "fit" && date) { fitScope = "日"; fitAnchor = date; renderFitness(); }
+  }
+});
 
 /* ---------- 自动同步：打开时拉取一次 ---------- */
 if (ghConfig.autoSync && ghConfig.owner && ghConfig.repo && ghConfig.token) {
