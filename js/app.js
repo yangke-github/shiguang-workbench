@@ -345,12 +345,28 @@ function toast(msg) {
   toastTimer = setTimeout(() => t.classList.remove("show"), 1600);
 }
 
-/* ---------- 发音 ---------- */
+/* ---------- 发音（英音优先） ---------- */
+let cachedVoices = [];
+function loadVoices() { try { cachedVoices = speechSynthesis.getVoices() || []; } catch (e) {} }
+if ("speechSynthesis" in window) {
+  loadVoices();
+  speechSynthesis.onvoiceschanged = loadVoices;
+}
+function pickVoice() {
+  const vs = cachedVoices.length ? cachedVoices : (() => { try { return speechSynthesis.getVoices() || []; } catch (e) { return []; } })();
+  // 英音优先：Daniel(苹果经典英音) / Arthur / Sonia / Kate / Oliver / Google UK / Microsoft UK
+  const uk = vs.filter(v => (v.lang || "").toLowerCase().startsWith("en-gb"));
+  const named = uk.find(v => /daniel|arthur|sonia|kate|oliver|uk english|google uk|microsoft (libby|sonia|ryan|george)/i.test(v.name));
+  return named || uk[0] || vs.find(v => /daniel|uk english|en-gb/i.test(v.name + (v.lang || ""))) || null;
+}
 function speak(text) {
   if (!("speechSynthesis" in window)) { toast("当前浏览器不支持朗读"); return; }
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
-  u.lang = "en-US"; u.rate = 0.92;
+  const v = pickVoice();
+  if (v) { u.voice = v; u.lang = v.lang; }
+  else { u.lang = "en-GB"; }
+  u.rate = 0.85; u.pitch = 1.0;   // 慢一点、自然一点
   speechSynthesis.speak(u);
 }
 
@@ -1037,6 +1053,8 @@ function openDishPicker(dayIdx) {
 
 /* 统一处理详情 chip 点击（事件委托） */
 document.addEventListener("click", e => {
+  // 编辑/删除/跳转按钮优先，避免误触详情
+  if (e.target.closest("[data-del],[data-edit],[data-jump]")) return;
   const chip = e.target.closest("[data-detail]");
   if (chip) openRecipeDetail(chip.dataset.detail);
 });
@@ -1064,14 +1082,26 @@ function renderRecipe() {
   else renderLibrary();
 }
 
-/* ----- 周食谱（多选 + 详情） ----- */
-function renderWeekMenu() {
+/* ----- 周食谱（固定周一到周日 + 多选 + 详情） ----- */
+function ensureWeekMenu() {
   const menu = store.weeklyMenu;
+  const mon = mondayOf(todayStr());
+  const needRebuild = !menu || menu.weekStart !== mon || !Array.isArray(menu.days) || menu.days.length !== 7;
+  if (needRebuild) {
+    menu.weekStart = mon;
+    menu.days = Array.from({ length: 7 }, (_, i) => ({ date: shiftDate(mon, i), recipeIds: [] }));
+    save();
+  }
+  return menu;
+}
+function renderWeekMenu() {
+  const menu = ensureWeekMenu();
+  const WD = ["一", "二", "三", "四", "五", "六", "日"];
   $("#rcBody").innerHTML = `
-    <div class="page-sub" style="margin-bottom:14px">本周始于 ${menu.weekStart} · 点菜名看做法，点 + 安排菜品</div>
+    <div class="page-sub" style="margin-bottom:14px">本周 ${menu.weekStart.slice(5)} 起 · 点菜名看做法，点 + 安排菜品</div>
     ${menu.days.map((d, i) => `
       <div class="week-row">
-        <div class="week-day"><b>周${wdOf(d.date)}</b><small>${d.date.slice(5)}</small></div>
+        <div class="week-day"><b>周${WD[i]}</b><small>${d.date.slice(5)}</small></div>
         <div class="day-dishes">${dishChips(d.recipeIds, "week") || `<span class="li-sub" style="align-self:center">未安排</span>`}</div>
         <button class="add-dish" data-picker="${i}" title="选择菜品">+</button>
       </div>`).join("")}`;
@@ -1192,6 +1222,7 @@ function renderLibrary() {
         <div class="recipe-name">${r.name}</div>
         <div class="recipe-ing">${r.ingredients.join(" · ")}</div>
         <div class="recipe-steps">${r.steps.map((s,i)=>`${i+1}. ${s}`).join("　")}</div>
+        <button class="todo-act act-del" data-del="recipe|${r.id}" title="删除食谱">🗑</button>
       </div>`).join("") || `<div class="empty">食谱库还是空的</div>`}`;
 
   $("#rcSubmit").addEventListener("click", () => {
@@ -1603,6 +1634,11 @@ document.addEventListener("click", e => {
         rec.recipeIds = rec.recipeIds.filter(id => String(id) !== b);
         if (!rec.recipeIds.length) store.menuHistory.records = store.menuHistory.records.filter(r => r.date !== a);
         save(); renderRecipe(); toast("已移除");
+      }
+    } else if (kind === "recipe") {
+      const i = store.recipes.recipes.findIndex(x => String(x.id) === a);
+      if (i >= 0 && confirm(`删除食谱「${store.recipes.recipes[i].name}」？`)) {
+        store.recipes.recipes.splice(i, 1); save(); renderRecipe(); toast("已删除");
       }
     } else if (kind === "fitday") {
       if (store.workouts[a] && confirm(`删除 ${a} 的训练记录？`)) { delete store.workouts[a]; save(); renderFitness(); toast("已删除"); }
