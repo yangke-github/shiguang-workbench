@@ -1241,12 +1241,67 @@ function renderLibrary() {
    页面：纪念日
 ================================================================ */
 /* ---------- 纪念日工具：支持 yearly 与 once ---------- */
+/* ---------- 农历支持（1900-2100 查表法） ---------- */
+const LUNAR_INFO = [
+0x04bd8,0x04ae0,0x0a570,0x054d5,0x0d260,0x0d950,0x16554,0x056a0,0x09ad0,0x055d2,
+0x04ae0,0x0a5b6,0x0a4d0,0x0d250,0x1d255,0x0b540,0x0d6a0,0x0ada2,0x095b0,0x14977,
+0x04970,0x0a4b8,0x0b4b0,0x06a50,0x06d40,0x1ab54,0x02b60,0x09570,0x052f2,0x04970,
+0x06566,0x0d4a0,0x0ea50,0x06e95,0x05ad0,0x02b60,0x186e3,0x092e0,0x1c8d7,0x0c950,
+0x0d4a0,0x1d8a6,0x0b550,0x056a0,0x1a5b4,0x025d0,0x092d0,0x0d2b2,0x0a950,0x0b557,
+0x06ca0,0x0b550,0x15355,0x04da0,0x0a5b0,0x14573,0x052b0,0x0a9a8,0x0e950,0x06aa0,
+0x0aea6,0x0ab50,0x04b60,0x0aae4,0x0a570,0x05260,0x0f263,0x0d950,0x05b57,0x056a0,
+0x096d0,0x04dd5,0x04ad0,0x0a4d0,0x0d4d4,0x0d250,0x0d558,0x0b540,0x0b6a0,0x195a6,
+0x095b0,0x049b0,0x0a974,0x0a4b0,0x0b27a,0x06a50,0x06d40,0x0af46,0x0ab60,0x09570,
+0x04af5,0x04970,0x064b0,0x074a3,0x0ea50,0x06b58,0x055c0,0x0ab60,0x096d5,0x092e0,
+0x0c960,0x0d954,0x0d4a0,0x0da50,0x07552,0x056a0,0x0abb7,0x025d0,0x092d0,0x0cab5,
+0x0a950,0x0b4a0,0x0baa4,0x0ad50,0x055d9,0x04ba0,0x0a5b0,0x15176,0x052b0,0x0a930,
+0x07954,0x06aa0,0x0ad50,0x05b52,0x04b60,0x0a6e6,0x0a4e0,0x0d260,0x0ea65,0x0d530,
+0x05aa0,0x076a3,0x096d0,0x04afb,0x04ad0,0x0a4d0,0x1d0b6,0x0d250,0x0d520,0x0dd45,
+0x0b5a0,0x056d0,0x055b2,0x049b0,0x0a577,0x0a4b0,0x0aa50,0x1b255,0x06d20,0x0ada0,
+0x14b63,0x09370,0x049f8,0x04970,0x064b0,0x168a6,0x0ea50,0x06b20,0x1a6c4,0x0aae0,
+0x092e0,0x0d2e3,0x0c960,0x0d557,0x0d4a0,0x0da50,0x05d55,0x056a0,0x0a6d0,0x055d4,
+0x052d0,0x0a9b8,0x0a950,0x0b4a0,0x0b6a6,0x0ad50,0x055a0,0x0aba4,0x0a5b0,0x052b0,
+0x0b273,0x06930,0x07337,0x06aa0,0x0ad50,0x14b55,0x04b60,0x0a570,0x054e4,0x0d160,
+0x0e968,0x0d520,0x0daa0,0x16aa6,0x056d0,0x04ae0,0x0a9d4,0x0a2d0,0x0d150,0x0f252,
+0x0d520];
+function lunarLeapMonth(y) { return LUNAR_INFO[y - 1900] & 0xf; }
+function lunarLeapDays(y) { return lunarLeapMonth(y) ? ((LUNAR_INFO[y - 1900] & 0x10000) ? 30 : 29) : 0; }
+function lunarMonthDays(y, m) { return (LUNAR_INFO[y - 1900] & (0x10000 >> m)) ? 30 : 29; }
+function lunarYearDays(y) {
+  let s = 348, i = 0x8000;
+  while (i > 0x8) { if (LUNAR_INFO[y - 1900] & i) s++; i >>= 1; }
+  return s + lunarLeapDays(y);
+}
+function lunarToSolar(y, m, d) {
+  let offset = 0;
+  for (let i = 1900; i < y; i++) offset += lunarYearDays(i);
+  const lm = lunarLeapMonth(y);
+  for (let i = 1; i < m; i++) {
+    offset += lunarMonthDays(y, i);
+    if (i === lm) offset += lunarLeapDays(y);
+  }
+  offset += d - 1;
+  const t = new Date(1900, 0, 31);
+  t.setHours(0, 0, 0, 0);
+  return new Date(t.getTime() + offset * 864e5);
+}
+function lunarAnniversaryDate(year, m, d) {
+  const t = lunarToSolar(year, m, d);
+  t.setHours(0, 0, 0, 0);
+  return t;
+}
+
 function daysUntilAnni(item) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   if (item.repeat === "once" && item.date) {
     const tg = new Date(item.date);
     tg.setHours(0, 0, 0, 0);
+    return Math.round((tg - today) / 864e5);
+  }
+  if (item.calendar === "lunar" && item.month && item.day) {
+    let tg = lunarAnniversaryDate(today.getFullYear(), item.month, item.day);
+    if (tg < today) tg = lunarAnniversaryDate(today.getFullYear() + 1, item.month, item.day);
     return Math.round((tg - today) / 864e5);
   }
   const tg = new Date(today.getFullYear(), item.month - 1, item.day);
@@ -1280,6 +1335,10 @@ function renderAnniversary() {
         <div><label class="f-label">月份</label><input type="number" id="anMonth" min="1" max="12" placeholder="9"></div>
         <div><label class="f-label">日期</label><input type="number" id="anDay" min="1" max="31" placeholder="20"></div>
       </div>
+      <div class="form-row" id="anLunarRow" style="align-items:center;margin-top:6px">
+        <input type="checkbox" id="anLunar" style="width:auto">
+        <label for="anLunar" style="margin:0;font-size:13px;color:var(--ink-2)">阴历（农历）日期 · 默认阳历</label>
+      </div>
       <button class="btn" id="anSubmit">保 存</button>
     </div>
 
@@ -1288,7 +1347,7 @@ function renderAnniversary() {
       const soon = a.days <= 30;
       const dateLabel = a.repeat === "once" && a.date
         ? a.date
-        : `${pad(a.month)} 月 ${pad(a.day)} 日 · 每年`;
+        : `${pad(a.month)} 月 ${pad(a.day)} 日 · 每年${a.calendar === "lunar" ? " · 阴历" : ""}`;
       return `<div class="anni-item">
         <div class="li-main">
           <div class="li-title">${a.name}</div>
@@ -1305,6 +1364,7 @@ function renderAnniversary() {
     const once = repeatSel.value === "once";
     mdRow.style.display = once ? "none" : "flex";
     dateInput.closest("div").style.display = once ? "block" : "none";
+    $("#anLunarRow").style.display = once ? "none" : "flex";   // 阴历仅适用于每年重复
   }
   updateForm();
   repeatSel.addEventListener("change", updateForm);
@@ -1326,17 +1386,18 @@ function renderAnniversary() {
           const m = +$("#anMonth").value, d = +$("#anDay").value;
           if (!m || !d) { toast("请填写月/日"); return; }
           t.month = m; t.day = d;
+          t.calendar = $("#anLunar").checked ? "lunar" : "solar";
         }
         anEditId = null;
       }
     } else if (repeat === "once") {
       const date = $("#anDate").value;
       if (!date) { toast("请选择日期"); return; }
-      store.anniversaries.items.push({ id: Date.now(), name, repeat: "once", date });
+      store.anniversaries.items.push({ id: Date.now(), name, repeat: "once", date, calendar: "solar" });
     } else {
       const m = +$("#anMonth").value, d = +$("#anDay").value;
       if (!m || !d) { toast("请填写月/日"); return; }
-      store.anniversaries.items.push({ id: Date.now(), name, month: m, day: d, repeat: "yearly" });
+      store.anniversaries.items.push({ id: Date.now(), name, month: m, day: d, repeat: "yearly", calendar: $("#anLunar").checked ? "lunar" : "solar" });
     }
     save(); renderAnniversary(); toast("已保存");
   });
@@ -1663,6 +1724,7 @@ document.addEventListener("click", e => {
       const rs = $("#anRepeat");
       if (it.repeat === "once") { rs.value = "once"; $("#anDate").value = it.date || ""; }
       else { rs.value = "yearly"; $("#anMonth").value = it.month; $("#anDay").value = it.day; }
+      $("#anLunar").checked = it.calendar === "lunar";
       rs.dispatchEvent(new Event("change"));
       $("#anSubmit").textContent = "更 新";
       window.scrollTo({ top: 0, behavior: "smooth" });
