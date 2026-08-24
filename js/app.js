@@ -370,16 +370,44 @@ function speak(text) {
   u.rate = 0.85; u.pitch = 1.0;   // 慢一点、自然一点
   speechSynthesis.speak(u);
 }
-/* 智能朗读：优先播 Edge 神经语音 mp3（英音），失败/离线退回本地朗读 */
-function speakSmart(text, url) {
-  if (url) {
-    const a = new Audio(url);
-    a.onerror = () => speak(text);
-    a.onplay = () => { try { speechSynthesis.cancel(); } catch (e) {} };
-    a.play().catch(() => speak(text));
-    return;
+/* 智能朗读：全局单播放器 —— 同时只有一个在播；播放中按钮变 ⏹，再点即停 */
+let curAudio = null;
+let curSayBtn = null;
+
+function setSayBtnPlaying(btn, playing) {
+  if (!btn) return;
+  if (playing) {
+    if (!btn.dataset.orig) btn.dataset.orig = btn.textContent;
+    btn.classList.add("playing");
+    btn.textContent = "⏹";
+  } else {
+    btn.classList.remove("playing");
+    if (btn.dataset.orig) btn.textContent = btn.dataset.orig;
   }
-  speak(text);
+}
+
+function stopSpeech() {
+  if (curAudio) {
+    try { curAudio.pause(); curAudio.currentTime = 0; } catch (e) {}
+    curAudio = null;
+  }
+  try { speechSynthesis.cancel(); } catch (e) {}
+  if (curSayBtn) { setSayBtnPlaying(curSayBtn, false); curSayBtn = null; }
+}
+
+function speakSmart(text, url, btn) {
+  stopSpeech();  // 先停掉之前的任何播放（重新开始，不重叠）
+  if (!url) { speak(text); return; }
+  const a = new Audio(url);
+  curAudio = a;
+  if (btn) { curSayBtn = btn; setSayBtnPlaying(btn, true); }
+  const done = () => {
+    if (curAudio === a) curAudio = null;
+    if (curSayBtn === btn) { setSayBtnPlaying(btn, false); curSayBtn = null; }
+  };
+  a.onended = done;
+  a.onerror = () => { done(); speak(text); };
+  a.play().catch(() => { done(); speak(text); });
 }
 
 /* ---------- 图表实例管理 ---------- */
@@ -431,9 +459,9 @@ function renderEnglish() {
 
     ${reviewHtml}`;
 
-  $$("#content [data-say]").forEach(b => b.addEventListener("click", () => speakSmart(b.dataset.say, b.dataset.sayUrl)));
+  $$("#content [data-say]").forEach(b => b.addEventListener("click", () => speakSmart(b.dataset.say, b.dataset.sayUrl, b)));
   const ab = $("#content [data-say-article]");
-  if (ab) ab.addEventListener("click", () => speakSmart(d.article.en, ab.dataset.sayUrl));
+  if (ab) ab.addEventListener("click", () => speakSmart(d.article.en, ab.dataset.sayUrl, ab));
   // 复习：点单词显示释义；点"全部显示/隐藏"批量切换
   $$("#content [data-revword]").forEach(b => b.addEventListener("click", () => b.classList.toggle("rev-show")));
   $$("#content [data-revday]").forEach(b => b.addEventListener("click", () => {
@@ -1443,6 +1471,7 @@ function renderAnniversary() {
 /* ---------- 渲染入口 ---------- */
 function render(page) {
   killCharts();
+  stopSpeech();  // 切页停止朗读
   $("#content").scrollTop = 0;
   const f = {
     home:        renderHome,
