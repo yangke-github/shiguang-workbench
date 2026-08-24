@@ -1464,8 +1464,10 @@ function renderHome() {
     .map(a => ({ ...a, days: daysUntilAnni(a) }))
     .sort((x, y) => x.days - y.days)[0];
 
-  // 英语打卡
-  const englishStreak = store.english.readDates?.filter(d => d >= "2026-08-01").length || 0;
+  // 英语打卡（近 30 天）
+  const d30 = new Date(); d30.setDate(d30.getDate() - 30);
+  const d30key = `${d30.getFullYear()}-${pad(d30.getMonth()+1)}-${pad(d30.getDate())}`;
+  const englishStreak = (store.english.readDates || []).filter(d => d >= d30key).length || 0;
 
   // Hermes 洞察
   const insights = store.insights || {};
