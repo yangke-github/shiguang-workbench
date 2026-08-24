@@ -1,4 +1,4 @@
-const CACHE = "shiguang-workbench-v4";
+const CACHE = "shiguang-workbench-v5";
 const CORE = [
   "./index.html",
   "./css/style.css",
