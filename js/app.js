@@ -310,6 +310,7 @@ const PAGE_TITLES = {
   todo:        "每日待办",
   recipe:      "一周食谱",
   anniversary: "纪念日",
+  trending:    "GitHub热榜",
   settings:    "设置"
 };
 let currentPage = "home";
@@ -401,6 +402,18 @@ function renderEnglish() {
 
   const kw = d.article.keywords.map(k => `<span class="tag">${k}</span>`).join("");
 
+  // 复习模式：近 3 天历史单词（点击词片显示释义）
+  const reviewDays = (d.history || []).filter(h => h.date !== d.date).slice(-3).reverse();
+  const reviewHtml = reviewDays.length ? `
+    <div class="section-title">📖 复习模式 <small>近 ${reviewDays.length} 天 · 点击单词显示释义</small></div>
+    ${reviewDays.map(h => `
+    <div class="rev-day">
+      <div class="rev-title">${h.date.slice(5)} 的单词（${h.words.length} 个）<button class="rev-toggle" data-revday="${h.date}">全部显示</button></div>
+      <div class="rev-words">${h.words.map(w => `
+        <button class="rev-chip" data-revword="${h.date}|${w.word}">${w.word}<i>${w.phonetic || ""}</i><b class="rev-mean">${w.meaning}</b></button>`).join("")}
+      </div>
+    </div>`).join("")}` : "";
+
   $("#content").innerHTML = `
     <div class="page-date">TODAY · ${d.date}</div>
     <div class="page-headline">今日十词</div>
@@ -414,11 +427,23 @@ function renderEnglish() {
       <div class="article-zh">${d.article.zh}</div>
       <div class="kw-row">${kw}</div>
       <div style="margin-top:18px"><button class="btn ghost" data-say-article="1" data-say-url="${ttsBase}/article.mp3">▷ 朗读全文</button></div>
-    </div>`;
+    </div>
+
+    ${reviewHtml}`;
 
   $$("#content [data-say]").forEach(b => b.addEventListener("click", () => speakSmart(b.dataset.say, b.dataset.sayUrl)));
   const ab = $("#content [data-say-article]");
   if (ab) ab.addEventListener("click", () => speakSmart(d.article.en, ab.dataset.sayUrl));
+  // 复习：点单词显示释义；点"全部显示/隐藏"批量切换
+  $$("#content [data-revword]").forEach(b => b.addEventListener("click", () => b.classList.toggle("rev-show")));
+  $$("#content [data-revday]").forEach(b => b.addEventListener("click", () => {
+    const day = b.dataset.revday;
+    const chips = $$(`#content [data-revword^="${day}|"]`);
+    const show = !b.classList.contains("on");
+    chips.forEach(c => c.classList.toggle("rev-show", show));
+    b.classList.toggle("on", show);
+    b.textContent = show ? "全部隐藏" : "全部显示";
+  }));
 }
 
 /* ================================================================
@@ -1427,6 +1452,7 @@ function render(page) {
     todo:        renderTodo,
     recipe:      renderRecipe,
     anniversary: renderAnniversary,
+    trending:    renderTrending,
     settings:    renderSettings
   }[page];
   (f || renderHome)();
@@ -1473,10 +1499,18 @@ function renderHome() {
   const insights = store.insights || {};
   const todayInsights = insights[todayStr()];
 
+  // 天气（定时任务推送结果，置顶显示）
+  const weather = store.weather || {};
+  const weatherCard = weather.date === todayStr() && weather.text
+    ? `<div class="weather-card">${weather.text.replace(/\n/g, "<br>")}</div>`
+    : "";
+
   $("#content").innerHTML = `
     <div class="page-date">DASHBOARD</div>
     <div class="page-headline">${(new Date().getHours() < 11 ? "上午好" : new Date().getHours() < 18 ? "下午好" : "晚上好")}, ${"今天也要好好过"}</div>
     <div class="page-sub">${new Date().getMonth()+1} 月 ${new Date().getDate()} 日 · 周${"日一二三四五六"[new Date().getDay()]}</div>
+
+    ${weatherCard}
 
     ${todayInsights ? `
     <div class="insight-card">
@@ -1531,6 +1565,37 @@ function renderHome() {
 
   $$(".dash-card, .quick-grid button").forEach(el =>
     el.addEventListener("click", () => go(el.dataset.go)));
+}
+
+/* ================================================================
+   页面：GitHub 热榜（周榜 / 月榜，定时任务结果）
+================================================================ */
+let trendTab = "weekly";
+function renderTrending() {
+  const gt = store.githubTrending || {};
+  const data = gt[trendTab] || { items: [] };
+  const updated = data.updatedAt || "--";
+  const list = data.items || [];
+  const empty = `<div class="empty">暂无${trendTab === "weekly" ? "周榜" : "月榜"}数据<br><small>每周日 / 月末 07:00 由 Hermes 自动更新，并推送微信</small></div>`;
+  $("#content").innerHTML = `
+    <div class="page-date">GITHUB TRENDING · ${updated}</div>
+    <div class="page-headline">GitHub 热榜</div>
+    <div class="page-sub">点击仓库名跳转 GitHub · 数据与微信推送同步</div>
+    <div class="seg" id="trendSeg">
+      <button class="${trendTab === "weekly" ? "active" : ""}" data-tab="weekly">周榜</button>
+      <button class="${trendTab === "monthly" ? "active" : ""}" data-tab="monthly">月榜</button>
+    </div>
+    ${list.length ? list.map((it, i) => `
+      <div class="list-item trend-item">
+        <span class="trend-rank">${i + 1}</span>
+        <div class="li-main">
+          <div class="li-title"><a href="https://github.com/${it.repo}" target="_blank" rel="noopener">${it.repo}</a> <span class="tag">${it.lang || "?"}</span></div>
+          <div class="li-sub">${it.desc || "暂无简介"}</div>
+          <div class="li-sub">💡 ${it.usage || ""}</div>
+        </div>
+        <span class="trend-stars">+${it.stars}⭐</span>
+      </div>`).join("") : empty}`;
+  $$("#trendSeg button").forEach(b => b.addEventListener("click", () => { trendTab = b.dataset.tab; renderTrending(); }));
 }
 
 /* ================================================================
