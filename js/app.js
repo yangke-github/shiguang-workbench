@@ -369,6 +369,17 @@ function speak(text) {
   u.rate = 0.85; u.pitch = 1.0;   // 慢一点、自然一点
   speechSynthesis.speak(u);
 }
+/* 智能朗读：优先播 Edge 神经语音 mp3（英音），失败/离线退回本地朗读 */
+function speakSmart(text, url) {
+  if (url) {
+    const a = new Audio(url);
+    a.onerror = () => speak(text);
+    a.onplay = () => { try { speechSynthesis.cancel(); } catch (e) {} };
+    a.play().catch(() => speak(text));
+    return;
+  }
+  speak(text);
+}
 
 /* ---------- 图表实例管理 ---------- */
 const charts = [];
@@ -379,12 +390,13 @@ function killCharts() { charts.forEach(c => { try { c.destroy(); } catch(e){} })
 ================================================================ */
 function renderEnglish() {
   const d = store.english;
-  const wordsHtml = d.words.map(w => `
+  const ttsBase = `https://cdn.jsdelivr.net/gh/yangke-github/shiguang-workbench@main/tts/${d.date || "0000-00-00"}`;
+  const wordsHtml = d.words.map((w, i) => `
     <div class="word-row">
       <span class="w">${w.word}</span>
       <span class="p">${w.phonetic}</span>
       <span class="m">${w.meaning}</span>
-      <button class="speak-btn" data-say="${w.word}" title="朗读">▷</button>
+      <button class="speak-btn" data-say="${w.word}" data-say-url="${ttsBase}/word-${i}.mp3" title="朗读">▷</button>
     </div>`).join("");
 
   const kw = d.article.keywords.map(k => `<span class="tag">${k}</span>`).join("");
@@ -401,12 +413,12 @@ function renderEnglish() {
       <div class="article-en">${d.article.en}</div>
       <div class="article-zh">${d.article.zh}</div>
       <div class="kw-row">${kw}</div>
-      <div style="margin-top:18px"><button class="btn ghost" data-say-article="1">▷ 朗读全文</button></div>
+      <div style="margin-top:18px"><button class="btn ghost" data-say-article="1" data-say-url="${ttsBase}/article.mp3">▷ 朗读全文</button></div>
     </div>`;
 
-  $$("#content [data-say]").forEach(b => b.addEventListener("click", () => speak(b.dataset.say)));
+  $$("#content [data-say]").forEach(b => b.addEventListener("click", () => speakSmart(b.dataset.say, b.dataset.sayUrl)));
   const ab = $("#content [data-say-article]");
-  if (ab) ab.addEventListener("click", () => speak(d.article.en));
+  if (ab) ab.addEventListener("click", () => speakSmart(d.article.en, ab.dataset.sayUrl));
 }
 
 /* ================================================================
