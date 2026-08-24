@@ -1426,7 +1426,7 @@ go("home");
 ================================================================ */
 function renderHome() {
   // 待办
-  const todoAll = store.todo.items || [];
+  const todoAll = store.todo.tasks || [];
   const todoOpen = todoAll.filter(t => !t.done).length;
   const todoOverdue = todoAll.filter(t => !t.done && t.due && t.due < todayStr()).length;
 
@@ -1629,7 +1629,7 @@ function renderReview() {
     <div class="section-title">待办 <small>${open.length} 项</small></div>
     ${open.length ? open.map(t => `<div class="list-item">
       <span class="tag gray">待办</span>
-      <div class="li-main"><div class="li-title">${t.title}</div><div class="li-sub">${t.due || "无截止"}</div></div>
+      <div class="li-main"><div class="li-title">${t.title}</div><div class="li-sub">${t.due || "无截止"}${t.postponeDays > 0 ? ` · <span class="tag">延期 ${t.postponeDays} 天</span>` : ""}</div></div>
     </div>`).join("") : `<div class="empty">清空的一天 :)</div>`}`;
 
   $("#rvSave").addEventListener("click", () => {
