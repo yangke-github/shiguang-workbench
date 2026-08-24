@@ -684,3 +684,4 @@ input[type="checkbox"] {
 .rev-mean { display: none; font-weight: 400; color: var(--ink-2); }
 .rev-chip.rev-show { border-color: var(--accent); background: var(--accent-soft); }
 .rev-chip.rev-show .rev-mean { display: inline; }
+.speak-btn.playing { color: #e05d5d; transform: scale(1.08); }
