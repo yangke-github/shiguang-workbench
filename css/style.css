@@ -107,7 +107,15 @@ input, select, textarea { font-family: var(--sans); }
 
 .drawer-brand { text-align: center; padding: 10px 0 14px; position: relative; }
 .brand-logo { position: relative; display: inline-block; }
-.logo-rabbit { display: block; margin: 0 auto; }
+.logo-rabbit {
+  display: block; margin: 0 auto;
+  width: 92px; height: 92px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2.5px solid #FFFFFF;
+  box-shadow: 0 4px 14px rgba(90, 159, 232, .35);
+  background: #EEF3F8;
+}
 .logo-bfly { position: absolute; top: -8px; right: -30px; }
 .logo-flower { position: absolute; bottom: 6px; left: -24px; }
 .brand-name {
