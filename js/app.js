@@ -1032,7 +1032,7 @@ function renderTodo() {
     <div class="section-title">新增 / 编辑 <small id="todoEditHint"></small></div>
     <div class="form">
       <div><label class="f-label">事项</label><input type="text" id="tdTitle" placeholder="要做什么"></div>
-      <div class="form-row">
+      <div class="form-row form-row-2">
         <div><label class="f-label">截止日期</label><input type="date" id="tdDue" value="${todayStr()}"></div>
         <div><label class="f-label">优先级</label>
           <select id="tdPrio"><option value="high">高</option><option value="medium" selected>中</option><option value="low">低</option></select></div>
@@ -1427,7 +1427,7 @@ function renderAnniversary() {
     <div class="section-title">新增纪念日</div>
     <div class="form">
       <div><label class="f-label">名称</label><input type="text" id="anName" placeholder="结婚纪念日"></div>
-      <div class="form-row">
+      <div class="form-row form-row-2">
         <div style="flex:2"><label class="f-label">重复方式</label>
           <select id="anRepeat">
             <option value="yearly">每年</option>
