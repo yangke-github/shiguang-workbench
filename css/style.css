@@ -34,6 +34,8 @@ body {
   background: linear-gradient(180deg, var(--bg-top) 0%, #E9F1F9 26%, #FFFFFF 58%);
   background-attachment: fixed;
   overflow: hidden;
+  touch-action: manipulation;   /* 禁止双击缩放 */
+  -webkit-text-size-adjust: 100%;
 }
 button { font-family: var(--sans); cursor: pointer; border: none; background: none; }
 input, select, textarea { font-family: var(--sans); }
@@ -229,6 +231,7 @@ input, select, textarea { font-family: var(--sans); }
 
 input, select, textarea {
   width: 100%;
+  min-width: 0;               /* 防 iOS date input 溢出重叠 */
   border: 1px solid var(--line); border-radius: 10px;
   background: rgba(255, 255, 255, .85);
   padding: 10px 12px;
