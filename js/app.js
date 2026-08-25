@@ -370,7 +370,9 @@ function speak(text) {
   u.rate = 0.85; u.pitch = 1.0;   // 慢一点、自然一点
   speechSynthesis.speak(u);
 }
-/* 智能朗读：全局单播放器 —— 同时只有一个在播；播放中按钮变 ⏹，再点即停 */
+/* 智能朗读：全局单播放器 —— 同时只有一个在播
+   单词按钮：▷ → ⏹（再点=停止重播）
+   文章按钮：▷ 朗读全文 → ⏸ 暂停（再点=继续）→ ▶ 继续；配 ⏹ 停止按钮 */
 let curAudio = null;
 let curSayBtn = null;
 
@@ -392,22 +394,52 @@ function stopSpeech() {
     curAudio = null;
   }
   try { speechSynthesis.cancel(); } catch (e) {}
-  if (curSayBtn) { setSayBtnPlaying(curSayBtn, false); curSayBtn = null; }
+  if (curSayBtn) {
+    const b = curSayBtn;
+    setSayBtnPlaying(b, false);
+    if (b.dataset && b.dataset.pauseLabel) b.textContent = b.dataset.orig || "▷ 朗读全文";
+    curSayBtn = null;
+  }
+  const sb = document.querySelector("[data-stop-article]");
+  if (sb) sb.style.display = "none";
 }
 
-function speakSmart(text, url, btn) {
-  stopSpeech();  // 先停掉之前的任何播放（重新开始，不重叠）
+function speakSmart(text, url, btn, pauseable) {
+  // 文章：同一按钮 播放中→暂停 / 暂停中→继续
+  if (pauseable && curAudio && curSayBtn === btn) {
+    if (curAudio.paused) {
+      curAudio.play();
+      btn.classList.add("playing");
+      btn.textContent = "⏸ 暂停";
+    } else {
+      curAudio.pause();
+      btn.textContent = "▶ 继续";
+    }
+    return;
+  }
+  stopSpeech();  // 停掉之前的任何播放（重新开始，不重叠）
   if (!url) { speak(text); return; }
   const a = new Audio(url);
   curAudio = a;
-  if (btn) { curSayBtn = btn; setSayBtnPlaying(btn, true); }
+  curSayBtn = btn;
+  if (btn.dataset) btn.dataset.orig = btn.dataset.orig || btn.textContent;
   const done = () => {
     if (curAudio === a) curAudio = null;
-    if (curSayBtn === btn) { setSayBtnPlaying(btn, false); curSayBtn = null; }
+    if (curSayBtn === btn) { curSayBtn = null; btn.textContent = btn.dataset.orig || "▷"; btn.classList.remove("playing"); }
+    const sb = document.querySelector("[data-stop-article]");
+    if (sb) sb.style.display = "none";
   };
   a.onended = done;
   a.onerror = () => { done(); speak(text); };
   a.play().catch(() => { done(); speak(text); });
+  if (pauseable) {
+    btn.classList.add("playing");
+    btn.textContent = "⏸ 暂停";
+    const sb = document.querySelector("[data-stop-article]");
+    if (sb) sb.style.display = "";
+  } else {
+    btn.textContent = "⏹";
+  }
 }
 
 /* ---------- 图表实例管理 ---------- */
@@ -454,14 +486,19 @@ function renderEnglish() {
       <div class="article-en">${d.article.en}</div>
       <div class="article-zh">${d.article.zh}</div>
       <div class="kw-row">${kw}</div>
-      <div style="margin-top:18px"><button class="btn ghost" data-say-article="1" data-say-url="${ttsBase}/article.mp3">▷ 朗读全文</button></div>
+      <div style="margin-top:18px; display:flex; gap:10px; flex-wrap:wrap">
+        <button class="btn ghost" data-say-article="1" data-say-url="${ttsBase}/article.mp3">▷ 朗读全文</button>
+        <button class="btn ghost" data-stop-article="1" style="display:none">⏹ 停止</button>
+      </div>
     </div>
 
     ${reviewHtml}`;
 
   $$("#content [data-say]").forEach(b => b.addEventListener("click", () => speakSmart(b.dataset.say, b.dataset.sayUrl, b)));
   const ab = $("#content [data-say-article]");
-  if (ab) ab.addEventListener("click", () => speakSmart(d.article.en, ab.dataset.sayUrl, ab));
+  if (ab) ab.addEventListener("click", () => speakSmart(d.article.en, ab.dataset.sayUrl, ab, true));
+  const sb = $("#content [data-stop-article]");
+  if (sb) sb.addEventListener("click", () => { stopSpeech(); });
   // 复习：点单词显示释义；点"全部显示/隐藏"批量切换
   $$("#content [data-revword]").forEach(b => b.addEventListener("click", () => b.classList.toggle("rev-show")));
   $$("#content [data-revday]").forEach(b => b.addEventListener("click", () => {
@@ -863,9 +900,11 @@ function renderExpense() {
   const inScope = r => {
     if (expScope === "日") return r.date === now;
     if (expScope === "周") {
-      const t = new Date(), dd = new Date(r.date);
+      // 本周一 ~ 今天（纯字符串比较，避免 Date 的 UTC 解析偏差）
+      const t = new Date();
       const monday = new Date(t); monday.setDate(t.getDate() - ((t.getDay() + 6) % 7));
-      return dd >= monday && dd <= t;
+      const mondayStr = `${monday.getFullYear()}-${pad(monday.getMonth()+1)}-${pad(monday.getDate())}`;
+      return r.date >= mondayStr && r.date <= now;
     }
     return r.date.slice(0, 7) === now.slice(0, 7);
   };
