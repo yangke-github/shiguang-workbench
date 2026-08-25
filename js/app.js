@@ -1125,6 +1125,7 @@ function closeModal() { modalOverlay.classList.remove("show"); }
 function openRecipeDetail(id) {
   const r = recipeById(id); if (!r) return;
   openModal(`
+    ${r.img ? `<img class="modal-img" src="${r.img}" alt="${r.name}" onerror="this.style.display='none'">` : ""}
     <div class="modal-kicker">食谱详情</div>
     <div class="modal-title">${r.name}</div>
     <div class="modal-sec">食 材</div>
@@ -1310,33 +1311,126 @@ function renderHistory() {
 }
 
 /* ----- 食谱库 ----- */
+/* 食谱图片：压缩后上传到 shiguang-workbench 仓库，CDN 展示 */
+const RECIPE_IMG_REPO = "yangke-github/shiguang-workbench";
+let rcImgData = null;        // 新选择的图片 dataURL
+let rcImgRemoved = false;    // 编辑时移除原图
+let editingRecipeId = null;  // 编辑中的食谱 id
+
+async function uploadRecipeImage(recipeId, dataUrl) {
+  if (!ghConfig.owner || !ghConfig.token) throw new Error("请先在设置里填写 GitHub 信息");
+  const base64 = dataUrl.split(",")[1];
+  const path = `recipes/${recipeId}.jpg`;
+  const url = `https://api.github.com/repos/${RECIPE_IMG_REPO}/contents/${path}`;
+  let sha;
+  const getRes = await fetch(url, { headers: ghHeaders() });
+  if (getRes.ok) sha = (await getRes.json()).sha;   // 已存在 → 带 sha 覆盖
+  const body = { message: `recipe img: ${recipeId}`, content: base64, branch: "main" };
+  if (sha) body.sha = sha;
+  const res = await fetch(url, { method: "PUT", headers: ghHeaders(), body: JSON.stringify(body) });
+  if (!res.ok) throw new Error((await res.json()).message || `HTTP ${res.status}`);
+  return `https://cdn.jsdelivr.net/gh/${RECIPE_IMG_REPO}@main/${path}?v=${Date.now()}`;
+}
+
+function pickRecipeImage(file) {
+  if (!file || !file.type.startsWith("image/")) { toast("请选择图片文件"); return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      const maxW = 600;
+      const scale = Math.min(1, maxW / img.width);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      rcImgData = canvas.toDataURL("image/jpeg", 0.82);
+      const prev = $("#rcImgPrev");
+      if (prev) { prev.src = rcImgData; prev.style.display = ""; }
+      $("#rcImgClear").style.display = "";
+      $("#rcImgHint").textContent = "✅ 已选图片（保存时上传）";
+      rcImgRemoved = false;
+    };
+    img.onerror = () => toast("图片读取失败");
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
 function renderLibrary() {
+  editingRecipeId = null;
+  rcImgData = null; rcImgRemoved = false;
   const recipes = store.recipes.recipes;
   $("#rcBody").innerHTML = `
-    <div class="section-title">新增食谱</div>
+    <div class="section-title">${editingRecipeId ? "编辑食谱" : "新增食谱"}</div>
     <div class="form">
       <div><label class="f-label">名称</label><input type="text" id="rcName" placeholder="番茄牛腩"></div>
       <div><label class="f-label">食材</label><input type="text" id="rcIng" placeholder="牛腩 500g，番茄 3 个，洋葱 1 个"></div>
       <div><label class="f-label">做法</label><textarea id="rcSteps" rows="2" placeholder="每步一行：&#10;牛腩焯水&#10;小火炖 90 分钟"></textarea></div>
+      <div class="form-row" style="align-items:center">
+        <button type="button" class="todo-act" id="rcImgBtn">📷 上传图片</button>
+        <input type="file" id="rcImg" accept="image/*" style="display:none">
+        <button type="button" class="todo-act act-del" id="rcImgClear" style="display:none">移除</button>
+        <span id="rcImgHint" style="font-size:11px;color:var(--ink-3)"></span>
+      </div>
+      <img id="rcImgPrev" style="display:none; max-width:100%; max-height:180px; border-radius:10px">
       <button class="btn" id="rcSubmit">保 存</button>
     </div>
-    <div class="section-title">食谱库 <small>${recipes.length} 道 · 点击查看做法</small></div>
+    <div class="section-title">食谱库 <small>${recipes.length} 道 · 点击查看详情</small></div>
     ${recipes.map(r => `
       <div class="recipe-item" data-detail="${r.id}" style="cursor:pointer">
-        <div class="recipe-name">${r.name}</div>
-        <div class="recipe-ing">${r.ingredients.join(" · ")}</div>
-        <div class="recipe-steps">${r.steps.map((s,i)=>`${i+1}. ${s}`).join("　")}</div>
+        ${r.img
+          ? `<img class="recipe-img" src="${r.img}" alt="${r.name}" loading="lazy">`
+          : `<div class="recipe-img recipe-img-empty">🍽️</div>`}
+        <div class="recipe-body">
+          <div class="recipe-name">${r.name}</div>
+          <div class="recipe-ing">${(r.ingredients || []).join(" · ")}</div>
+        </div>
+        <button class="todo-act" data-edit="recipe|${r.id}" title="编辑食谱">编辑</button>
         <button class="todo-act act-del" data-del="recipe|${r.id}" title="删除食谱">🗑</button>
       </div>`).join("") || `<div class="empty">食谱库还是空的</div>`}`;
 
-  $("#rcSubmit").addEventListener("click", () => {
+  $("#rcImgBtn").addEventListener("click", () => $("#rcImg").click());
+  $("#rcImg").addEventListener("change", e => {
+    const f = e.target.files[0];
+    if (f) pickRecipeImage(f);
+    e.target.value = "";
+  });
+  $("#rcImgClear").addEventListener("click", () => {
+    rcImgData = null; rcImgRemoved = true;
+    $("#rcImgPrev").style.display = "none";
+    $("#rcImgClear").style.display = "none";
+    $("#rcImgHint").textContent = "已移除图片";
+  });
+  $("#rcSubmit").addEventListener("click", async () => {
     const name = $("#rcName").value.trim();
     if (!name) { toast("请输入食谱名称"); return; }
-    store.recipes.recipes.push({
-      id: Date.now(), name,
-      ingredients: $("#rcIng").value.split(/[,，]/).map(s=>s.trim()).filter(Boolean),
-      steps: $("#rcSteps").value.split("\n").map(s=>s.trim()).filter(Boolean)
-    });
+    const submitBtn = $("#rcSubmit");
+    const data = {
+      ingredients: $("#rcIng").value.split(/[,，]/).map(s => s.trim()).filter(Boolean),
+      steps: $("#rcSteps").value.split("\n").map(s => s.trim()).filter(Boolean)
+    };
+    submitBtn.disabled = true; submitBtn.textContent = "保存中…";
+    try {
+      if (editingRecipeId) {
+        const r = store.recipes.recipes.find(x => x.id === editingRecipeId);
+        if (!r) { toast("食谱不存在"); return; }
+        Object.assign(r, { name }, data);
+        if (rcImgData) r.img = await uploadRecipeImage(r.id, rcImgData);
+        else if (rcImgRemoved) delete r.img;
+        editingRecipeId = null;
+      } else {
+        const id = Date.now();
+        const r = { id, name, ...data };
+        if (rcImgData) r.img = await uploadRecipeImage(id, rcImgData);
+        store.recipes.recipes.push(r);
+      }
+    } catch (err) {
+      toast("保存失败：" + (err.message || "图片上传失败"));
+      submitBtn.disabled = false; submitBtn.textContent = "保 存";
+      return;
+    }
+    rcImgData = null; rcImgRemoved = false;
     save(); renderRecipe(); toast("已保存");
   });
 }
@@ -1874,6 +1968,20 @@ document.addEventListener("click", e => {
       $("#anLunar").checked = it.calendar === "lunar";
       rs.dispatchEvent(new Event("change"));
       $("#anSubmit").textContent = "更 新";
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } else if (kind === "recipe") {
+      const r = store.recipes.recipes.find(x => String(x.id) === a);
+      if (!r || !$("#rcName")) return;
+      editingRecipeId = r.id;
+      $("#rcName").value = r.name;
+      $("#rcIng").value = (r.ingredients || []).join("，");
+      $("#rcSteps").value = (r.steps || []).join("\n");
+      $("#rcSubmit").textContent = "更 新";
+      $("#rcImgHint").textContent = "";
+      rcImgData = null; rcImgRemoved = false;
+      const prev = $("#rcImgPrev"), clearBtn = $("#rcImgClear");
+      if (r.img) { prev.src = r.img; prev.style.display = ""; clearBtn.style.display = ""; }
+      else { prev.style.display = "none"; clearBtn.style.display = "none"; }
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
     return;
