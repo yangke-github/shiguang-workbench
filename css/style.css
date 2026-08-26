@@ -721,3 +721,14 @@ input[type="checkbox"] {
   width: 100%; max-height: 220px; object-fit: cover;
   border-radius: 10px; margin-bottom: 10px;
 }
+
+/* ============ 体重记录卡（v3.2） ============ */
+.weight-card {
+  background: #fff;
+  border: 1px solid rgba(90,159,232,.22);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.weight-title { font-size: 13px; font-weight: 700; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: baseline; }
+.weight-title span { font-size: 11px; font-weight: 400; color: var(--ink-3); }
