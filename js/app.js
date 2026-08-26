@@ -525,6 +525,64 @@ const allCardioTypes = () => [...CARDIO_TYPES, ...(store.customCardio || [])];
 /* 组容量：Σ 重量×次数（重量 0 或空 = 自重，不计入） */
 const volOfSets = sets => sets.reduce((s, x) => s + ((+x.weight || 0) > 0 ? (+x.weight) * (+x.reps || 0) : 0), 0);
 
+/* ---------- 体重记录卡（健身页顶部，各视图共用） ---------- */
+function renderWeightCard() {
+  const bw = store.bodyWeight || { records: [] };
+  const recs = (bw.records || []).slice();
+  const sorted = recs.slice().sort((a, b) => a.date < b.date ? 1 : -1);
+  const lastW = sorted[0];
+  const list = sorted.slice(0, 10);
+  const asc = recs.slice().sort((a, b) => a.date < b.date ? -1 : 1).slice(-14);
+  const chartHtml = asc.length >= 2
+    ? `<div style="height:110px;margin-top:10px"><canvas id="bwChart"></canvas></div>`
+    : `<div style="font-size:11px;color:var(--ink-3);margin-top:8px">记录 2 次以上显示曲线</div>`;
+  return `
+    <div class="weight-card">
+      <div class="weight-title">⚖️ 体重记录 ${lastW ? `<span>最新 ${lastW.weight}kg（${lastW.date.slice(5)}）</span>` : ""}</div>
+      <div class="form-row form-row-2">
+        <div><label class="f-label">日期</label><input type="date" id="bwDate" value="${todayStr()}"></div>
+        <div><label class="f-label">体重 kg</label><input type="number" id="bwWeight" step="0.1" placeholder="70.0"></div>
+      </div>
+      <button class="btn" id="bwSubmit" style="width:100%">记 录</button>
+      ${chartHtml}
+      <div id="bwList" style="margin-top:6px">
+        ${list.map(r => `
+          <div class="list-item" style="padding:8px 2px">
+            <span class="tag gray">${r.date.slice(5)}</span>
+            <div class="li-main"><div class="li-title">${r.weight} kg</div></div>
+            <button class="todo-act act-del" data-del="weight|${r.date}">🗑</button>
+          </div>`).join("")}
+      </div>
+    </div>`;
+}
+
+function bindWeightCard() {
+  $("#bwSubmit").addEventListener("click", () => {
+    const date = $("#bwDate").value, w = parseFloat($("#bwWeight").value);
+    if (!date) { toast("请选择日期"); return; }
+    if (!w || w < 20 || w > 300) { toast("请输入有效体重"); return; }
+    if (!store.bodyWeight) store.bodyWeight = { records: [] };
+    const recs = store.bodyWeight.records;
+    const i = recs.findIndex(r => r.date === date);
+    if (i >= 0) recs[i].weight = w; else recs.push({ date, weight: w });
+    save(); renderFitness(); toast("已记录 ⚖️");
+  });
+  const asc = (store.bodyWeight?.records || []).slice().sort((a, b) => a.date < b.date ? -1 : 1).slice(-14);
+  const cvs = $("#bwChart");
+  if (cvs && asc.length >= 2) {
+    charts.push(new Chart(cvs, {
+      type: "line",
+      data: {
+        labels: asc.map(r => r.date.slice(5)),
+        datasets: [{ data: asc.map(r => r.weight), borderColor: "#5A9FE8", backgroundColor: "rgba(90,159,232,.12)",
+          fill: true, tension: .35, pointRadius: 3, pointBackgroundColor: "#5A9FE8" }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+        scales: { y: { grid: { color: "rgba(44,62,80,.06)" } }, x: { grid: { display: false } } } }
+    }));
+  }
+}
+
 function renderFitness() {
   let label;
   if (fitScope === "日") label = `${fitDay.slice(5)} · 周${wdOf(fitDay)}`;
@@ -545,6 +603,9 @@ function renderFitness() {
       <div class="hist-label">${label}</div>
       <button id="fitNext">›</button>
     </div>
+
+    ${renderWeightCard()}
+
     <div id="fitBody"></div>`;
 
   $("#fitSeg").addEventListener("click", e => {
@@ -555,6 +616,7 @@ function renderFitness() {
   });
   $("#fitPrev").addEventListener("click", () => shiftFit(-1));
   $("#fitNext").addEventListener("click", () => shiftFit(1));
+  bindWeightCard();
 
   if (fitScope === "日") renderDayEditor();
   else renderStatView();
@@ -1906,7 +1968,8 @@ function clearAllData() {
     english: { date: "", words: [], article: { title: "", en: "", zh: "", keywords: [] }, readDates: [] },
     todo: { tasks: [] }, anniversaries: { items: [] }, insights: {},
     workouts: {}, expense: { records: [] }, recipes: { recipes: [] },
-    weeklyMenu: { days: [] }, menuHistory: { records: [] }, customEx: [], customCardio: []
+    weeklyMenu: { days: [] }, menuHistory: { records: [] }, customEx: [], customCardio: [],
+    bodyWeight: { records: [] }
   };
   delete store._sync; save(); renderSettings(); toast("已清空，空白开始");
 }
@@ -1942,6 +2005,10 @@ document.addEventListener("click", e => {
       if (i >= 0 && confirm(`删除食谱「${store.recipes.recipes[i].name}」？`)) {
         store.recipes.recipes.splice(i, 1); save(); renderRecipe(); toast("已删除");
       }
+    } else if (kind === "weight") {
+      const bw = store.bodyWeight || { records: [] };
+      const i = bw.records.findIndex(r => r.date === a);
+      if (i >= 0 && confirm(`删除 ${a} 的体重记录？`)) { bw.records.splice(i, 1); save(); renderFitness(); toast("已删除"); }
     } else if (kind === "fitday") {
       if (store.workouts[a] && confirm(`删除 ${a} 的训练记录？`)) { delete store.workouts[a]; save(); renderFitness(); toast("已删除"); }
     }
